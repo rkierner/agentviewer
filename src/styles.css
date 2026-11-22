@@ -311,6 +311,22 @@ code { color: var(--green-soft); }
 .is-paused .backlog { color: var(--amber); border-color: rgba(255, 181, 71, 0.35); }
 .is-paused .chunk { transition: none; }
 
+/* Atmos: the activity rain shows through the lane; each chunk's words sit on a
+   dark plate so falling columns pass around them instead of through them. */
+.mode-atmos .lane { background: rgba(3, 14, 8, 0.16); }
+.mode-atmos .lane.st-failed { background: linear-gradient(rgba(255, 93, 93, 0.08), rgba(3, 14, 8, 0.16) 40%); }
+.mode-atmos .lane-head { background: linear-gradient(rgba(2, 10, 6, 0.96), rgba(2, 10, 6, 0.9)); }
+.mode-atmos .chunk .body { align-items: flex-start; }
+.mode-atmos .chunk .text,
+.mode-atmos .chunk .meta {
+  max-width: 100%;
+  background: rgba(2, 8, 5, var(--plate, 0.86));
+  box-shadow: 0 0 0 3px rgba(2, 8, 5, var(--plate, 0.86));
+}
+.mode-atmos .chunk .tag { background: rgba(2, 8, 5, var(--plate, 0.9)); }
+.mode-atmos .chunk.a-attention .tag { background: var(--amber); }
+.mode-atmos .lane.st-completed .stream, .mode-atmos .lane.st-idle .stream { filter: none; opacity: 0.8; }
+
 /* collapsed lane */
 .lane.collapsed {
   flex: 0 0 34px; min-width: 34px; max-width: 34px; cursor: pointer;

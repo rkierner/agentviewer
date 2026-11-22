@@ -3,7 +3,7 @@ import { groupLanes, store, type Lane as LaneT } from './store';
 import { MockFeed } from './mock';
 import { clearCollector, useCollector } from './collector';
 import { Lane, type Mode } from './components/Lane';
-import { RainCanvas, type LaneRegion } from './components/RainCanvas';
+import { RainCanvas, type LaneRect } from './components/RainCanvas';
 import type { AgentStatus } from '../shared/events';
 
 const pref = {
@@ -155,22 +155,21 @@ export function App() {
     setTimeout(() => setFlashId(null), 1600);
   };
 
-  const getRegions = useCallback((): LaneRegion[] => {
+  // The activity rain falls inside each expanded lane's stream area.
+  const getLaneRects = useCallback((): LaneRect[] => {
     const root = matrixRef.current;
     if (!root) return [];
-    const t = Date.now();
-    const s = store.getSnapshot();
-    return Array.from(root.querySelectorAll<HTMLElement>('[data-lane]')).map((el) => {
-      const r = el.getBoundingClientRect();
-      const lane = s.lanes[el.dataset.lane!];
-      const heat = lane ? Math.max(0, 1 - (t - lane.lastEventAt) / 3000) : 0;
-      return { left: r.left, right: r.right, status: (el.dataset.status as AgentStatus) ?? 'idle', heat };
+    return Array.from(root.querySelectorAll<HTMLElement>('[data-lane]:not(.collapsed)')).flatMap((el) => {
+      const stream = el.querySelector('.stream');
+      if (!stream) return [];
+      const r = stream.getBoundingClientRect();
+      return [{ id: el.dataset.lane!, left: r.left, right: r.right, top: r.top, bottom: r.bottom }];
     });
   }, []);
 
   return (
     <div className={`app mode-${mode} ${state.paused ? 'is-paused' : ''} ${fullscreen ? 'is-fullscreen' : ''}`}>
-      {mode === 'atmos' && <RainCanvas getRegions={getRegions} paused={state.paused} />}
+      {mode === 'atmos' && <RainCanvas store={store} getLaneRects={getLaneRects} />}
       <div className="vignette" aria-hidden="true" />
 
       <header className="topbar">
@@ -281,7 +280,7 @@ export function App() {
         <div className="help" role="dialog" aria-label="Help" onClick={() => setHelp(false)}>
           <div className="help-card" onClick={(e) => e.stopPropagation()}>
             <h3>Agent Matrix</h3>
-            <p>Each vertical lane is one agent. Subagents sit beside their parent, joined by the bracket above them. New activity enters at the top and flows down.</p>
+            <p>Each vertical lane is one agent. Subagents sit beside their parent, joined by the bracket above them. New activity enters at the top and flows down; in atmos mode each activity also falls as a vertical column of its command or file ($ run, + edit, /search/, &gt;&gt; spawn, ? approval, x failure).</p>
             <ul className="legend">
               <li><span className="dot st-working" /> working</li>
               <li><span className="dot st-waiting" /> needs you — approval or input</li>
