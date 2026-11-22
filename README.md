@@ -18,13 +18,13 @@ npm install
 npm run dev
 ```
 
-Open the `http://127.0.0.1:5173/#token=…` link it prints. Mock agents start streaming straight away, with no setup needed. The token unlocks live agent data for that browser tab, so treat the link like a password.
+Open the `http://127.0.0.1:4327/#token=…` link it prints. Mock agents start streaming straight away, with no setup needed. The browser remembers the token for this address, so you only need the link once per browser. Treat the link like a password.
 
 `npm run dev` runs two processes:
 
 | process | address | what it does |
 | --- | --- | --- |
-| UI (Vite + React) | `127.0.0.1:5173` | the matrix; proxies `/api` to the collector |
+| UI (Vite + React) | `127.0.0.1:4327` | the matrix; proxies `/api` to the collector |
 | collector (Node) | `127.0.0.1:4317` | receives hook events, keeps an in-memory buffer, streams to the UI |
 
 To run a single process that serves the built UI and the collector together:
@@ -242,6 +242,7 @@ Scrubbing is pattern-based, so it reduces the risk of showing a secret but can't
 | `AGENTVIEWER_URL` | `http://127.0.0.1:$PORT` | where the hook sends events |
 | `AGENTVIEWER_HOOK_TIMEOUT_MS` | `400` | hook POST timeout |
 | `AGENTVIEWER_DISABLE` | unset | `1` makes the hook a no-op |
+| `AGENTVIEWER_UI_PORT` | `4327` | dev UI port; keep it unique to this app, because the browser saves the token per address |
 | `AGENTVIEWER_HOST` | `127.0.0.1` | collector bind address (prints a warning if it isn't loopback) |
 | `AGENTVIEWER_ALLOWED_HOSTS` | unset | comma-separated extra `Host` names to accept, for non-loopback binds |
 | `AGENTVIEWER_TOKEN_FILE` | `~/.agentviewer/token` | where the access token is stored |
@@ -250,7 +251,7 @@ Scrubbing is pattern-based, so it reduces the risk of showing a secret but can't
 ## Troubleshooting
 
 - **The header says "collector offline".** Start the collector with `npm run dev` or `npm start`. Mock mode works without it.
-- **The header says "collector locked".** Open the `#token=…` link printed by `npm run dev` or `npm start`. Each new browser tab needs the link.
+- **The header says "collector locked".** Open the `#token=…` link printed by `npm run dev` or `npm start`. You need it once per browser.
 - **No live lanes appear.**
   1. Run `npm run simulate` with the collector running. If the simulated sessions appear, the collector and UI are fine and the problem is the hook registration.
   2. Check the hook command by hand:

@@ -23,7 +23,10 @@ export default defineConfig({
   plugins: [react(), accessLink()],
   server: {
     host: '127.0.0.1',
-    port: 5173,
+    // A port of its own: the saved access token is scoped to this address, so
+    // no other project may land here. strictPort fails instead of drifting.
+    port: Number(process.env.AGENTVIEWER_UI_PORT ?? 4327),
+    strictPort: true,
     proxy: { '/api': { target: COLLECTOR, changeOrigin: false } },
   },
 });

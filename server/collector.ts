@@ -188,7 +188,7 @@ export function createCollector(opts: CollectorOptions = {}) {
   const serveStatic = (req: http.IncomingMessage, res: http.ServerResponse) => {
     if (!staticDir || !fs.existsSync(path.join(staticDir, 'index.html'))) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('Agent Matrix collector is running.\nUI: run `npm run dev` and open http://127.0.0.1:5173 (or `npm start` to serve the built UI here).\n');
+      res.end('Agent Matrix collector is running.\nUI: run `npm run dev` and open the link it prints (or `npm start` to serve the built UI here).\n');
       return;
     }
     const url = new URL(req.url ?? '/', 'http://x');

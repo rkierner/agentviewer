@@ -4,19 +4,19 @@ import type { MatrixStore } from './store';
 
 export type CollectorStatus = 'connecting' | 'live' | 'offline' | 'locked';
 
-// Per-tab on purpose: localStorage would be readable by any other dev server
-// that later runs on this same localhost port.
+// Saved for this origin only. The UI runs on a dedicated port (strictPort in
+// vite.config.ts) so that no other local project can read it.
 const TOKEN_KEY = 'agentmatrix.token';
 
-/** Move a token from the access link's #fragment into this tab's storage. */
+/** Move a token from the access link's #fragment into this origin's storage. */
 function currentToken(): string | null {
   try {
     const match = location.hash.match(/(?:^#|&)token=([a-f0-9]{64})(?:&|$)/);
     if (match) {
-      sessionStorage.setItem(TOKEN_KEY, match[1]);
+      localStorage.setItem(TOKEN_KEY, match[1]);
       history.replaceState(null, '', location.pathname + location.search);
     }
-    return sessionStorage.getItem(TOKEN_KEY);
+    return localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
