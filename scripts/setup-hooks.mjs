@@ -182,12 +182,16 @@ if (!write) {
 }
 
 fs.mkdirSync(path.dirname(target), { recursive: true });
+// Settings can hold secrets: keep the file's mode, and create new files owner-only.
+const mode = existed ? fs.statSync(target).mode & 0o777 : 0o600;
 if (existed) {
   const backup = `${target}.agentviewer-backup-${new Date().toISOString().replace(/[:.]/g, '-')}`;
   fs.copyFileSync(target, backup);
+  fs.chmodSync(backup, mode);
   console.log(`  backup: ${backup}`);
 }
 const tmp = `${target}.agentviewer-tmp-${process.pid}`;
-fs.writeFileSync(tmp, after + '\n');
+fs.writeFileSync(tmp, after + '\n', { mode, flag: 'wx' });
+fs.chmodSync(tmp, mode);
 fs.renameSync(tmp, target);
 console.log(`✓ ${uninstall ? 'Removed' : 'Installed'}. ${provider === 'claude' ? 'Start a new Claude Code session (or run /hooks to review).' : 'Restart Cursor so it reloads hooks.json.'}`);

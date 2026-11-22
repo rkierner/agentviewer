@@ -159,7 +159,7 @@ export const Lane = memo(function Lane({ lane, depth, parentName, mode, now, col
       <header className="lane-head" onDoubleClick={() => onToggle(lane.id)}>
         {depth > 0 && parentName && <div className="lineage">↳ subagent of {parentName}</div>}
         <div className="title-row">
-          <span className="provider">{PROVIDER[lane.provider] ?? lane.provider.toUpperCase()}</span>
+          <span className="provider">{Object.hasOwn(PROVIDER, lane.provider) ? PROVIDER[lane.provider] : lane.provider.toUpperCase()}</span>
           <h2 className="name" title={lane.cwd ? `${lane.name}\n${lane.cwd}` : lane.name}>
             {lane.name}
           </h2>

@@ -6,17 +6,34 @@
 // and transcripts are dropped. Strings that do survive are truncated and
 // scrubbed of things that look like credentials.
 
-const SECRET_PATTERNS = [
-  // key=value / key: value style assignments of sensitive names
-  /\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|PWD|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|AUTH|CREDENTIALS?)[A-Z0-9_]*)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/gi,
-  // --password foo, --token=foo, -p foo (common CLI flags)
-  /(--?(?:password|passwd|token|api-key|apikey|secret|auth|key)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi,
-  // Authorization headers
-  /((?:authorization|x-api-key)\s*:\s*)(?:bearer\s+|basic\s+)?("[^"]*"|'[^']*'|\S+)/gi,
-  /(\bbearer\s+)([A-Za-z0-9._~+/=-]{8,})/gi,
+// Order matters: specific forms run first, so the generic NAME=value rule can't
+// consume "Authorization:" and leave the token behind.
+const SECRET_RULES = [
+  // Authorization and cookie headers
+  [/((?:authorization|x-api-key)\s*:\s*)(?:bearer\s+|basic\s+)?(?:"[^"]*"|'[^']*'|\S+)/gi, '$1•••'],
+  [/((?:set-)?cookie\s*:\s*)[^"'\n]+/gi, '$1•••'],
+  [/(\bbearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1•••'],
   // user:pass@host in URLs
-  /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi,
+  [/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]+:[^\s/@]+@/gi, '$1•••@'],
+  // curl -u user:pass, --user=user:pass, --proxy-user user:pass
+  [/((?:^|\s)(?:-u|-U|--user|--proxy-user)(?:=|\s+)?["']?[^\s:"']+:)[^\s"']+/g, '$1•••'],
+  // curl -b / --cookie
+  [/(\bcurl\b[^|;&]*?\s(?:-b|--cookie)(?:=|\s+))(?:"[^"]*"|'[^']*'|\S+)/g, '$1•••'],
+  // Tool-specific -p flags (a generic rule would eat `mkdir -p dir`)
+  [/(\bsshpass\b[^|;&]*?\s-p\s*)(?:"[^"]*"|'[^']*'|\S+)/g, '$1•••'],
+  [/(\b(?:mysql\w*|mariadb\w*)\b[^|;&]*?\s-p)(?=\S)(?:"[^"]*"|'[^']*'|\S+)/g, '$1•••'],
+  // echo secret | docker login --password-stdin
+  [/(\b(?:echo|printf)\s+(?:-n\s+)?)(?:"[^"]*"|'[^']*'|\S+)(?=[^|]*\|[^|;&]*(?:--password-stdin|--passphrase-fd|chpasswd))/g, '$1•••'],
+  // --password foo, --token=foo, --client-secret foo
+  [/(--?(?:password|passwd|pass|token|api-key|apikey|secret|auth|key)(?:=|\s+))(?:"[^"]*"|'[^']*'|\S+)/gi, '$1•••'],
+  // aws configure set aws_secret_access_key foo
+  [/\b(\w*_(?:secret|password|passwd|token|key)\w*|(?:secret|password|token)_\w+)\s+(?![=:&|;])(?:"[^"]*"|'[^']*'|\S+)/gi, '$1 •••'],
 ];
+// key=value / key: value style assignments of sensitive names
+const SECRET_ASSIGNMENT =
+  /\b([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PWD|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|AUTH|COOKIE|CREDENTIALS?|(?<![A-Za-z])PASS(?![A-Za-z])|_KEY(?![A-Za-z]))[A-Z0-9_]*)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/gi;
+// Terminal escapes, other control characters, and invisible/bidi formatting.
+const CONTROL_CHARS = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩]/g;
 const TOKEN_SHAPES = [
   /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{12,}\b/g, // OpenAI / Anthropic / Stripe style
   /\bsk-ant-[A-Za-z0-9_-]{8,}\b/g,
@@ -31,21 +48,17 @@ const TOKEN_SHAPES = [
 
 export function scrub(input) {
   if (typeof input !== 'string') return input;
-  let s = input;
-  // Order matters: headers/bearer first, so the generic NAME=value rule
-  // can't consume "Authorization:" and leave the token behind.
-  s = s.replace(SECRET_PATTERNS[2], (_, h) => `${h}•••`);
-  s = s.replace(SECRET_PATTERNS[3], (_, b) => `${b}•••`);
-  s = s.replace(SECRET_PATTERNS[4], (_, scheme) => `${scheme}•••@`);
-  s = s.replace(SECRET_PATTERNS[1], (_, flag) => `${flag}•••`);
-  s = s.replace(SECRET_PATTERNS[0], (m, k) => (m.includes('•••') ? m : `${k}=•••`));
+  // Strip first, so a control character can't split a secret past the rules.
+  let s = input.replace(CONTROL_CHARS, '');
+  for (const [re, to] of SECRET_RULES) s = s.replace(re, to);
+  s = s.replace(SECRET_ASSIGNMENT, (m, k) => (m.includes('•••') ? m : `${k}=•••`));
   for (const re of TOKEN_SHAPES) s = s.replace(re, '•••');
   return s;
 }
 
 export function clip(s, n) {
   if (typeof s !== 'string') return undefined;
-  const one = s.replace(/\s+/g, ' ').trim();
+  const one = s.replace(/\s+/g, ' ').replace(CONTROL_CHARS, '').trim();
   return one.length > n ? one.slice(0, n - 1) + '…' : one;
 }
 
@@ -65,7 +78,10 @@ export function hostOf(url) {
   }
 }
 
-const str = (v, n = 200) => (typeof v === 'string' ? clip(v, n) : undefined);
+// Scrub before clipping, so truncation can't cut a secret out of a rule's reach.
+const str = (v, n = 200) => (typeof v === 'string' ? clip(scrub(v), n) : undefined);
+// Opaque ids are matched between events, so they are cleaned but never scrubbed.
+const id = (v) => (typeof v === 'string' ? clip(v, 120) : undefined);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const bool = (v) => (typeof v === 'boolean' ? v : undefined);
 
@@ -81,7 +97,7 @@ function safeToolInput(input) {
     command: safeCommand(input.command),
     description: input.description != null ? clip(scrub(String(input.description)), 90) : undefined,
     subagent_type: str(input.subagent_type, 60),
-    url_host: hostOf(input.url) ?? (typeof input.url_host === 'string' ? clip(input.url_host, 120) : undefined),
+    url_host: hostOf(input.url) ?? str(input.url_host, 120),
     has_query: input.query != null || input.has_query === true ? true : undefined,
   };
   return prune(out);
@@ -104,13 +120,13 @@ export function redactPayload(raw) {
   const out = {
     // shared / Claude Code
     hook_event_name: str(raw.hook_event_name, 60),
-    session_id: str(raw.session_id, 120),
+    session_id: id(raw.session_id),
     cwd: str(raw.cwd, 400),
     permission_mode: str(raw.permission_mode, 30),
-    agent_id: str(raw.agent_id, 120),
+    agent_id: id(raw.agent_id),
     agent_type: str(raw.agent_type, 80),
     tool_name: str(raw.tool_name, 120),
-    tool_use_id: str(raw.tool_use_id, 120),
+    tool_use_id: id(raw.tool_use_id),
     tool_input: safeToolInput(raw.tool_input),
     notification_type: str(raw.notification_type, 60),
     // Notification messages are short system strings like "Claude needs your permission to use Bash".
@@ -125,9 +141,9 @@ export function redactPayload(raw) {
     has_error: raw.error != null || raw.has_error === true ? true : undefined,
     session_title: raw.session_title != null ? clip(scrub(String(raw.session_title)), 60) : undefined,
     // Cursor
-    conversation_id: str(raw.conversation_id, 120),
-    generation_id: str(raw.generation_id, 120),
-    workspace_roots: Array.isArray(raw.workspace_roots) ? raw.workspace_roots.slice(0, 3).map((r) => clip(String(r), 400)) : undefined,
+    conversation_id: id(raw.conversation_id),
+    generation_id: id(raw.generation_id),
+    workspace_roots: Array.isArray(raw.workspace_roots) ? raw.workspace_roots.slice(0, 3).map((r) => str(String(r), 400)) : undefined,
     command: safeCommand(raw.command),
     file_path: str(raw.file_path, 400),
     edit_count: Array.isArray(raw.edits) ? raw.edits.length : num(raw.edit_count),
@@ -135,9 +151,9 @@ export function redactPayload(raw) {
     loop_count: num(raw.loop_count),
     exit_code: num(raw.exit_code) ?? num(raw.exitCode),
     attachment_count: Array.isArray(raw.attachments) ? raw.attachments.length : num(raw.attachment_count),
-    subagent_id: str(raw.subagent_id, 120),
+    subagent_id: id(raw.subagent_id),
     subagent_type: str(raw.subagent_type, 80),
-    parent_conversation_id: str(raw.parent_conversation_id, 120),
+    parent_conversation_id: id(raw.parent_conversation_id),
   };
   return prune(out) ?? {};
 }

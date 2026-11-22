@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. Mock agents start streaming straight away, with no setup needed.
+Open the `http://127.0.0.1:5173/#token=…` link it prints. Mock agents start streaming straight away, with no setup needed. The token unlocks live agent data for that browser tab, so treat the link like a password.
 
 `npm run dev` runs two processes:
 
@@ -33,7 +33,7 @@ To run a single process that serves the built UI and the collector together:
 npm start
 ```
 
-Then open http://127.0.0.1:4317.
+Then open the `http://127.0.0.1:4317/#token=…` link it prints.
 
 Requires Node 18.17+ (developed on Node 22).
 
@@ -91,9 +91,9 @@ anything else ──POST /api/events (canonical AgentEvent)───────
 | `GET /api/events?since=<ms>` | buffered events |
 | `DELETE /api/events` | clear the buffer |
 | `GET /api/stream` | SSE: a `snapshot` event, then `events` batches, then `cleared` |
-| `GET /api/health` | counters |
+| `GET /api/health` | `{ok:true}`, plus counters with a valid token |
 
-The collector listens on `127.0.0.1` only. It rejects write requests that carry a non-localhost `Origin`, so a web page can't post into it. Bodies are capped at 256 KB, and nothing is written to disk.
+The collector listens on `127.0.0.1` only. Every other `/api` route needs `Authorization: Bearer <token>`, using the owner-only token in `~/.agentviewer/token`. It also rejects unknown `Host` headers and any `Origin` other than the page's own, which blocks cross-site requests and DNS rebinding. Bodies are capped at 256 KB, and event data is never written to disk.
 
 ### Event format
 
@@ -120,7 +120,7 @@ interface AgentEvent {
 Any other tool can feed the matrix by posting these events:
 
 ```bash
-curl -X POST localhost:4317/api/events -H 'content-type: application/json' -d '{"type":"tool_started","provider":"my-agent","sessionId":"s1","agentId":"s1","label":"my agent","summary":"reading main.go","kind":"read"}'
+curl -X POST localhost:4317/api/events -H "authorization: Bearer $(cat ~/.agentviewer/token)" -H 'content-type: application/json' -d '{"type":"tool_started","provider":"my-agent","sessionId":"s1","agentId":"s1","label":"my agent","summary":"reading main.go","kind":"read"}'
 ```
 
 ---
@@ -228,7 +228,9 @@ Redaction happens in `hooks/redact.mjs` **before the payload leaves the hook pro
 
 - **Kept**: event names, session and agent ids, the working directory, tool names, file paths (shown relative to the workspace), the first line of shell commands, search patterns (truncated), URL hosts, short subagent descriptions, exit codes and durations.
 - **Dropped**: prompts, assistant messages, tool output and responses, file contents, edit diffs, transcripts, MCP results and stack traces.
-- **Scrubbed** in the strings that are kept: `NAME_TOKEN=…`-style assignments, `--password`/`--token` flags, `Authorization`/`Bearer` values, `user:pass@` in URLs, and common token shapes (`sk-…`, `ghp_…`, `xox…-`, `AKIA…`, JWTs, long hex strings). Everything becomes `•••`.
+- **Scrubbed** in the strings that are kept: `NAME_TOKEN=…`-style assignments, `--password`/`--token` flags, `mysql -p…`, `sshpass -p`, `curl -u`, piped `--password-stdin` values, `Authorization`, `Bearer` and cookie values, `user:pass@` in URLs, and common token shapes (`sk-…`, `ghp_…`, `xox…-`, `AKIA…`, JWTs, long hex strings). Everything becomes `•••`. Terminal escape codes and other control characters are removed.
+
+Scrubbing is pattern-based, so it reduces the risk of showing a secret but can't guarantee it. A password passed in an unusual form can still appear.
 
 `npm run simulate` sends payloads containing planted prompts, file contents and secrets through the real pipeline and checks that none of them reach the collector's buffer.
 
@@ -241,11 +243,14 @@ Redaction happens in `hooks/redact.mjs` **before the payload leaves the hook pro
 | `AGENTVIEWER_HOOK_TIMEOUT_MS` | `400` | hook POST timeout |
 | `AGENTVIEWER_DISABLE` | unset | `1` makes the hook a no-op |
 | `AGENTVIEWER_HOST` | `127.0.0.1` | collector bind address (prints a warning if it isn't loopback) |
+| `AGENTVIEWER_ALLOWED_HOSTS` | unset | comma-separated extra `Host` names to accept, for non-loopback binds |
+| `AGENTVIEWER_TOKEN_FILE` | `~/.agentviewer/token` | where the access token is stored |
 | `AGENTVIEWER_QUIET` | unset | `1` stops the collector logging each event |
 
 ## Troubleshooting
 
 - **The header says "collector offline".** Start the collector with `npm run dev` or `npm start`. Mock mode works without it.
+- **The header says "collector locked".** Open the `#token=…` link printed by `npm run dev` or `npm start`. Each new browser tab needs the link.
 - **No live lanes appear.**
   1. Run `npm run simulate` with the collector running. If the simulated sessions appear, the collector and UI are fine and the problem is the hook registration.
   2. Check the hook command by hand:

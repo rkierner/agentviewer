@@ -14,6 +14,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readToken } from '../hooks/token.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hook = path.join(root, 'hooks', 'agentviewer-hook.mjs');
@@ -109,7 +110,8 @@ await Promise.all(tasks);
 // Verify nothing sensitive made it into the collector buffer.
 try {
   const port = process.env.AGENTVIEWER_PORT || 4317;
-  const res = await fetch(`http://127.0.0.1:${port}/api/events`);
+  const res = await fetch(`http://127.0.0.1:${port}/api/events`, { headers: { authorization: `Bearer ${readToken() ?? ''}` } });
+  if (!res.ok) throw new Error(`collector returned ${res.status}`);
   const text = await res.text();
   const leaks = ['SECRET PROMPT', 'sk-ant-', 'FILE CONTENTS', 'PRIVATE', 'supersecretvalue', 'hunter2', 'SHELL OUTPUT', 'Cannot find module'].filter((s) => text.includes(s));
   const n = JSON.parse(text).length;

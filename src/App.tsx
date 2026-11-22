@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { groupLanes, store, type Lane as LaneT } from './store';
+import { groupLanes, laneById, store, type Lane as LaneT } from './store';
 import { MockFeed } from './mock';
 import { clearCollector, useCollector } from './collector';
 import { Lane, type Mode } from './components/Lane';
@@ -132,7 +132,7 @@ export function App() {
   }, [waiting.length]);
 
   const isCollapsed = (lane: LaneT, depth: number) => {
-    if (lane.id in toggled) return toggled[lane.id];
+    if (Object.hasOwn(toggled, lane.id)) return toggled[lane.id];
     const done = lane.status === 'completed' || lane.status === 'failed';
     return depth > 0 && done && now - lane.statusSince > AUTO_COLLAPSE_MS;
   };
@@ -140,8 +140,8 @@ export function App() {
   const onToggle = useCallback(
     (id: string) => {
       setToggled((t) => {
-        const lane = store.getSnapshot().lanes[id];
-        const current = id in t ? t[id] : !!lane && !!lane.parentId && (lane.status === 'completed' || lane.status === 'failed') && Date.now() - lane.statusSince > AUTO_COLLAPSE_MS;
+        const lane = laneById(store.getSnapshot().lanes, id);
+        const current = Object.hasOwn(t, id) ? t[id] : !!lane && !!lane.parentId && (lane.status === 'completed' || lane.status === 'failed') && Date.now() - lane.statusSince > AUTO_COLLAPSE_MS;
         return { ...t, [id]: !current };
       });
     },
@@ -225,6 +225,12 @@ export function App() {
         </div>
       )}
 
+      {collector === 'locked' && (
+        <div className="locked" role="status">
+          Live agents are locked. Open the <code>#token=…</code> link printed by <code>npm run dev</code> or <code>npm start</code>.
+        </div>
+      )}
+
       <main className="matrix" ref={matrixRef}>
         {groups.length === 0 && (
           <div className="empty">
@@ -243,7 +249,7 @@ export function App() {
           return (
             <div className={`session ${children.length ? 'has-children' : ''}`} key={g.sessionId}>
               {g.lanes.map(({ lane, depth }) => {
-                const parent = lane.parentId ? state.lanes[lane.parentId] : undefined;
+                const parent = laneById(state.lanes, lane.parentId);
                 const idx = children.findIndex((c) => c.lane.id === lane.id);
                 return (
                   <Lane

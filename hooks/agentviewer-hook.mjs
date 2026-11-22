@@ -19,6 +19,7 @@
 
 import http from 'node:http';
 import { redactPayload } from './redact.mjs';
+import { readToken } from './token.mjs';
 
 const provider = process.argv[2] === 'cursor' ? 'cursor' : 'claude';
 const base = process.env.AGENTVIEWER_URL || `http://127.0.0.1:${process.env.AGENTVIEWER_PORT || 4317}`;
@@ -64,9 +65,11 @@ process.stdin.on('end', () => {
   const body = JSON.stringify({ provider, receivedAt, payload: redactPayload(raw) });
   try {
     const url = new URL(`/api/ingest/${provider}`, base);
+    const token = readToken();
+    const headers = { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), ...(token ? { authorization: `Bearer ${token}` } : {}) };
     const req = http.request(
       url,
-      { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) }, timeout: TIMEOUT_MS },
+      { method: 'POST', headers, timeout: TIMEOUT_MS },
       (res) => {
         res.resume();
         res.on('end', finish);

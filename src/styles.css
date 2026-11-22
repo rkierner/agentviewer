@@ -141,6 +141,11 @@ code { color: var(--green-soft); }
 .attn-item span { color: #ffd9a0; opacity: 0.85; }
 .attn-item:hover { background: rgba(255, 181, 71, 0.18); }
 
+.locked {
+  padding: 7px 18px; font-size: 12px; color: var(--green-soft);
+  background: rgba(70, 255, 140, 0.06); border-bottom: 1px solid var(--line-strong);
+}
+
 /* ── matrix ──────────────────────────────────────────── */
 .matrix {
   flex: 1;

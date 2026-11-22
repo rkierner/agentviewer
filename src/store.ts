@@ -59,6 +59,11 @@ const IDLE_AFTER_MS = 90_000;
 
 type Listener = () => void;
 
+/** Lane ids come from events, so "__proto__" or "constructor" must not hit Object.prototype. */
+export function laneById(lanes: Record<string, Lane>, id: string | undefined): Lane | undefined {
+  return id !== undefined && Object.hasOwn(lanes, id) ? lanes[id] : undefined;
+}
+
 function kindFor(e: AgentEvent): ActivityKind {
   if (e.kind) return e.kind;
   switch (e.type) {
@@ -92,7 +97,7 @@ const plural: Record<ActivityKind, (n: number) => string> = {
 export class MatrixStore {
   private state: MatrixState = { lanes: {}, order: [], paused: false, version: 0 };
   private listeners = new Set<Listener>();
-  private lastRelease: Record<string, number> = {};
+  private lastRelease: Record<string, number> = Object.create(null);
   private timer: ReturnType<typeof setInterval> | null = null;
   /** ms between chunk releases per lane. */
   releaseInterval = 420;
@@ -137,12 +142,18 @@ export class MatrixStore {
   /** Apply a batch. `replay` skips the flow queue (used for snapshot on reconnect). */
   ingest(events: AgentEvent[], opts: { replay?: boolean } = {}) {
     if (!events.length) return;
-    for (const e of events) this.apply(e, !!opts.replay);
+    for (const e of events) {
+      try {
+        this.apply(e, !!opts.replay);
+      } catch {
+        /* one bad event must not drop the rest of the batch */
+      }
+    }
     this.emit();
   }
 
   private ensureLane(e: AgentEvent): Lane {
-    let lane = this.state.lanes[e.agentId];
+    let lane = laneById(this.state.lanes, e.agentId);
     if (!lane) {
       lane = {
         id: e.agentId,
@@ -311,7 +322,7 @@ export class MatrixStore {
         this.setStatus(lane, 'working', e.ts);
         lane.activity = 'starting up';
         this.push(lane, chunk(e.summary, 'info', 'spawn'), replay);
-        const parent = e.parentAgentId && this.state.lanes[e.parentAgentId];
+        const parent = laneById(this.state.lanes, e.parentAgentId);
         if (parent && parent.id !== lane.id) {
           const p = { ...parent };
           this.state.lanes = { ...this.state.lanes, [p.id]: p };
@@ -325,7 +336,7 @@ export class MatrixStore {
         this.setStatus(lane, ok ? 'completed' : 'failed', e.ts);
         lane.activity = e.summary;
         this.push(lane, chunk(e.summary, ok ? 'ok' : 'fail', ok ? 'done' : 'fail'), replay);
-        const parent = e.parentAgentId && this.state.lanes[e.parentAgentId];
+        const parent = laneById(this.state.lanes, e.parentAgentId);
         if (parent && parent.id !== lane.id) {
           const p = { ...parent };
           this.state.lanes = { ...this.state.lanes, [p.id]: p };
@@ -397,7 +408,7 @@ export class MatrixStore {
     const retire = this.state.order.filter((id) => {
       const l = this.state.lanes[id];
       if (!expired(l)) return false;
-      if (l.parentId && this.state.lanes[l.parentId]) return true;
+      if (laneById(this.state.lanes, l.parentId)) return true;
       return this.state.order.every((o) => this.state.lanes[o].sessionId !== l.sessionId || expired(this.state.lanes[o]));
     });
     if (retire.length && !this.state.paused) {

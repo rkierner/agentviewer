@@ -1,14 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { redactPayload, scrub } from '../hooks/redact.mjs';
+import { clip, redactPayload, safeCommand, scrub } from '../hooks/redact.mjs';
+import { ensureToken } from '../hooks/token.mjs';
+import { MatrixStore, store as uiStore } from '../src/store.ts';
+import type { AgentEvent } from '../shared/events.ts';
 import { ClaudeAdapter } from './adapters/claude.ts';
 import { CursorAdapter } from './adapters/cursor.ts';
-import { createCollector } from './collector.ts';
+import { createCollector, sanitizeEvent } from './collector.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+uiStore.dispose(); // its interval would keep the test process alive
 
 test('scrub removes common secret shapes', () => {
   const s = scrub('API_KEY=abc123 curl -H "Authorization: Bearer abcdefghijkl" https://u:p@x.io --token zzz sk-ant-aaaaaaaaaaaa ghp_aaaaaaaaaaaaaaaaaaaaaaaa');
@@ -90,25 +97,116 @@ test('collector ingests, streams, rejects cross-origin writes, and clears', asyn
   const c = createCollector({ log: false, reorderMs: 10 });
   const port = await c.listen(0);
   const url = `http://127.0.0.1:${port}`;
+  const authorization = `Bearer ${c.token}`;
   try {
     const r = await fetch(`${url}/api/ingest/claude`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization },
       body: JSON.stringify({ payload: { hook_event_name: 'SessionStart', session_id: 's', cwd: '/p' } }),
     });
     assert.equal(r.status, 202);
-    const evil = await fetch(`${url}/api/events`, { method: 'DELETE', headers: { origin: 'https://evil.example' } });
+    const evil = await fetch(`${url}/api/events`, { method: 'DELETE', headers: { origin: 'https://evil.example', authorization } });
     assert.equal(evil.status, 403);
     await new Promise((res) => setTimeout(res, 40));
-    const events = await (await fetch(`${url}/api/events`)).json();
+    const events = await (await fetch(`${url}/api/events`, { headers: { authorization } })).json();
     assert.equal(events.length, 1);
     assert.equal(events[0].type, 'session_started');
-    const bad = await fetch(`${url}/api/events`, { method: 'POST', body: JSON.stringify([{ nope: 1 }]) });
+    const bad = await fetch(`${url}/api/events`, { method: 'POST', headers: { authorization }, body: JSON.stringify([{ nope: 1 }]) });
     assert.deepEqual(await bad.json(), { accepted: 0 });
-    await fetch(`${url}/api/events`, { method: 'DELETE' });
-    assert.equal((await (await fetch(`${url}/api/events`)).json()).length, 0);
+    await fetch(`${url}/api/events`, { method: 'DELETE', headers: { authorization } });
+    assert.equal((await (await fetch(`${url}/api/events`, { headers: { authorization } })).json()).length, 0);
   } finally {
     await c.close();
+  }
+});
+
+test('collector requires the token, a known Host, and a same-origin browser', async () => {
+  const c = createCollector({ log: false, reorderMs: 1 });
+  const port = await c.listen(0);
+  const request = (p: string, headers: Record<string, string>) =>
+    new Promise<number>((resolve, reject) => {
+      http.request({ host: '127.0.0.1', port, path: p, headers }, (res) => {
+        res.resume();
+        resolve(res.statusCode!);
+      }).on('error', reject).end();
+    });
+  const authorization = `Bearer ${c.token}`;
+  try {
+    assert.equal(await request('/api/events', {}), 401);
+    assert.equal(await request('/api/stream', {}), 401);
+    assert.equal(await request('/api/events', { authorization: 'Bearer wrong' }), 401);
+    assert.equal(await request('/api/events', { authorization }), 200);
+    assert.equal(await request('/api/events', { authorization, host: 'attacker.example:4317' }), 403);
+    assert.equal(await request('/api/events', { authorization, origin: 'http://localhost:9999' }), 403);
+    assert.equal(await request('/api/events', { authorization, origin: `http://127.0.0.1:${port}` }), 200);
+    const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
+    assert.deepEqual(health, { ok: true });
+  } finally {
+    await c.close();
+  }
+});
+
+test('scrub catches passwords in common command forms', () => {
+  for (const cmd of [
+    'export DB_PASS=hunter2secret',
+    'mysql -u root -phunter2secret',
+    'sshpass -p hunter2secret ssh host',
+    'curl -u admin:hunter2secret https://x.test',
+    'curl -H "Cookie: session=hunter2secret" https://x.test',
+    'curl -b session=hunter2secret https://x.test',
+    'aws configure set aws_secret_access_key hunter2secret',
+    'tool --client-secret hunter2secret',
+    'echo hunter2secret | docker login --password-stdin',
+    'STRIPE_KEY=hunter2secret node app.js',
+  ]) assert.ok(!safeCommand(cmd)!.includes('hunter2secret'), `leaked: ${safeCommand(cmd)}`);
+  for (const cmd of ['mkdir -p src/app', 'git checkout -b feature', 'npm test', 'git push origin main']) assert.equal(safeCommand(cmd), cmd);
+  assert.equal(scrub(scrub('export DB_PASS=x')), scrub('export DB_PASS=x'));
+  const paths = JSON.stringify(redactPayload({ tool_input: { file_path: '/w/sk-ant-abcdefghijklmnop.txt', glob: 'ghp_abcdefghijklmnopqrstuvwxyz' } }));
+  assert.ok(!paths.includes('sk-ant') && !paths.includes('ghp_'), paths);
+});
+
+test('terminal escape sequences are stripped', () => {
+  assert.ok(!safeCommand('printf \u001b]52;c;ZXZpbA==\u0007done')!.includes('\u001b'));
+  assert.equal(clip('a\u001b[31mb‮c', 20), 'a[31mbc');
+});
+
+test('canonical events are rebuilt and scrubbed', () => {
+  const e = sanitizeEvent({
+    v: 1, id: 'x', ts: 1, provider: 'p', type: 'tool_started', sessionId: 's', agentId: 'a',
+    summary: 'ran \u001b[2J sk-ant-abcdefghijklmnop', files: ['/w/ghp_abcdefghijklmnopqrstuvwxyz'], extra: 'dropped',
+  } as AgentEvent);
+  assert.ok(!JSON.stringify(e).includes('sk-ant') && !JSON.stringify(e).includes('ghp_') && !JSON.stringify(e).includes('\\u001b'));
+  assert.equal('extra' in e, false);
+});
+
+test('UI store survives reserved lane ids', () => {
+  const m = new MatrixStore();
+  const ev = (id: string, agentId: string) => ({ v: 1, id, ts: Date.now(), provider: 'p', type: 'tool_started', sessionId: 's', agentId, summary: 'x' }) as AgentEvent;
+  try {
+    m.ingest([ev('1', 'good-1'), ev('2', '__proto__'), ev('3', 'constructor'), ev('4', 'good-2')], { replay: true });
+    assert.deepEqual(m.getSnapshot().order, ['good-1', '__proto__', 'constructor', 'good-2']);
+    assert.equal(({} as Record<string, unknown>).id, undefined);
+  } finally {
+    m.dispose();
+  }
+});
+
+test('setup keeps settings permissions and the token file is owner-only', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentviewer-test-'));
+  try {
+    const file = path.join(dir, 'settings.json');
+    fs.writeFileSync(file, '{}');
+    fs.chmodSync(file, 0o600);
+    const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'setup-hooks.mjs'), 'claude', '--file', file, '--write']);
+    assert.equal(r.status, 0);
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    const tokenFile = path.join(dir, 'nested', 'token');
+    const token = ensureToken(tokenFile);
+    assert.match(token, /^[a-f0-9]{64}$/);
+    assert.equal(fs.statSync(tokenFile).mode & 0o777, 0o600);
+    assert.equal(ensureToken(tokenFile), token);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
