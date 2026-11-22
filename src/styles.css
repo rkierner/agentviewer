@@ -52,7 +52,7 @@ code { color: var(--green-soft); }
   flex-direction: column;
   isolation: isolate;
 }
-.rain { position: fixed; inset: 0; z-index: -2; }
+.rain { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
 .vignette {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
@@ -282,7 +282,6 @@ code { color: var(--green-soft); }
 .meta { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.8; }
 
 .chunk.head .text { color: var(--text-hi); }
-.mode-atmos .chunk.head .text { text-shadow: 0 0 10px rgba(70, 255, 140, 0.55); }
 .mode-atmos .chunk.head .tag { color: var(--green); border-color: var(--green-dim); }
 .chunk.k-edit .tag { color: var(--green-soft); }
 .chunk.k-run .tag { color: #c6ff8a; border-color: rgba(198, 255, 138, 0.25); }
@@ -311,20 +310,11 @@ code { color: var(--green-soft); }
 .is-paused .backlog { color: var(--amber); border-color: rgba(255, 181, 71, 0.35); }
 .is-paused .chunk { transition: none; }
 
-/* Atmos: the activity rain shows through the lane; each chunk's words sit on a
-   dark plate so falling columns pass around them instead of through them. */
+/* Atmos: the activity rain falls in front; the command log is a translucent
+   layer behind it (ink opacity is set per row in Lane.tsx). */
 .mode-atmos .lane { background: rgba(3, 14, 8, 0.16); }
 .mode-atmos .lane.st-failed { background: linear-gradient(rgba(255, 93, 93, 0.08), rgba(3, 14, 8, 0.16) 40%); }
 .mode-atmos .lane-head { background: linear-gradient(rgba(2, 10, 6, 0.96), rgba(2, 10, 6, 0.9)); }
-.mode-atmos .chunk .body { align-items: flex-start; }
-.mode-atmos .chunk .text,
-.mode-atmos .chunk .meta {
-  max-width: 100%;
-  background: rgba(2, 8, 5, var(--plate, 0.86));
-  box-shadow: 0 0 0 3px rgba(2, 8, 5, var(--plate, 0.86));
-}
-.mode-atmos .chunk .tag { background: rgba(2, 8, 5, var(--plate, 0.9)); }
-.mode-atmos .chunk.a-attention .tag { background: var(--amber); }
 .mode-atmos .lane.st-completed .stream, .mode-atmos .lane.st-idle .stream { filter: none; opacity: 0.8; }
 
 /* collapsed lane */

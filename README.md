@@ -1,6 +1,6 @@
 # Agent Matrix
 
-A local-first, full-screen live view of the AI coding agents running on your machine. Each agent gets its own vertical lane. As the agent works, short readable chunks of activity flow down the lane: *reading routes.ts*, *editing auth.ts*, *running npm test*, *needs approval*, *finished*. Behind each lane, the rain *is* the work: every activity drops a vertical column spelling out what happened (`$ npm test`, `+ src/auth.ts`, `/verifyToken/`, `? git push`), written downward Matrix-style with a bright head and a fading trail. There is no filler: an idle lane is still, and a busy lane pours.
+A local-first, full-screen live view of the AI coding agents running on your machine. Each agent gets its own vertical lane. As the agent works, short readable chunks of activity flow down the lane: *reading routes.ts*, *editing auth.ts*, *running npm test*, *needs approval*, *finished*. In front of each lane, the rain *is* the work: every activity drops a vertical column spelling out what happened (`$ npm test`, `+ src/auth.ts`, `/verifyToken/`, `? git push`), written downward Matrix-style with a bright head and a fading trail. There is no filler: an idle lane is still, and a busy lane pours.
 
 ![Agent Matrix, atmospheric mode](docs/screenshot-atmos.png)
 
@@ -54,7 +54,7 @@ The lanes, left to right:
 - **States**: `working` (green), `needs you` (amber, pulsing), `failed` (red), `completed` (pale green), `idle` (grey; no events for 90s).
 - **Needs you**: when any agent is waiting for approval or input, an amber strip appears under the top bar. It names each agent and what it is waiting for, and clicking an entry scrolls to and flashes that lane. The browser tab title also shows `(N) needs you`.
 - **Subagents** sit to the right of their parent, joined by a bracket, and their headers say *↳ subagent of …*. The parent lane gets *spawned X* and *X returned* chunks. Finished subagents collapse into a thin strip after 8s; click the strip, or double-click a header, to toggle it.
-- **Activity rain** (atmos mode): each chunk released into a lane also falls as a vertical column of its command, file or pattern. The sigil shows the kind: `$` run, `+` edit, `/…/` search, `>>` spawn, `?` needs approval, `x` failure. Colour matches the chunk: lime for runs, green for edits and reads, teal for spawns, amber for approvals, red for failures. Chunk text sits on dark plates so the columns pass behind the words.
+- **Activity rain** (atmos mode): each chunk released into a lane also falls as a vertical column of its command, file or pattern. The sigil shows the kind: `$` run, `+` edit, `/…/` search, `>>` spawn, `?` needs approval, `x` failure. Colour matches the chunk: lime for runs, green for edits and reads, teal for spawns, amber for approvals, red for failures. The rain falls in front, and the chunk text stays translucent behind it.
 - **Flow control**: each lane releases chunks at a steady pace. When a burst arrives, queued chunks of the same kind merge (*reading 7 files*). A tool's start chunk shows a blinking cursor and is updated in place when the tool completes, so each call takes one line. Failures get their own red line.
 - Finished lanes are retired after 15 minutes (35s for mock lanes).
 

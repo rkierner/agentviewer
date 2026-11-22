@@ -26,6 +26,8 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
 
 const PROVIDER: Record<string, string> = { 'claude-code': 'CLAUDE', cursor: 'CURSOR', mock: 'MOCK' };
 
+const ATMOS_INK = 0.34;
+const ATMOS_INK_URGENT = 0.7;
 
 /** Matrix "decode": text resolves left to right out of glyph noise. */
 function useDecode(text: string, active: boolean) {
@@ -76,15 +78,15 @@ const ChunkRow = memo(function ChunkRow({ chunk, index, mode, row, now }: { chun
   const fade = mode === 'atmos' ? Math.max(0.1, 1 - index * 0.075) : Math.max(0.5, 1 - index * 0.035);
   const cls = ['chunk', `k-${chunk.kind}`, `s-${chunk.state}`, chunk.accent ? `a-${chunk.accent}` : '', index === 0 ? 'head' : ''].join(' ');
   const meta = [ago(now - chunk.ts), dirOf(chunk.files)].filter(Boolean).join(' · ');
-  // Readable mode fades whole rows. Atmos mode fades only the ink and keeps a
-  // dark plate behind the words, so the activity rain passes around them.
+  // Readable mode fades whole rows. Atmos mode keeps the log translucent behind
+  // the rain, with failures and approval requests a step stronger.
   const atmos = mode === 'atmos';
-  const plate = Math.min(0.95, fade * 1.3 + 0.2);
-  const ink = atmos ? { opacity: fade } : undefined;
+  const urgent = chunk.state === 'fail' || chunk.accent === 'fail' || chunk.accent === 'attention';
+  const ink = atmos ? { opacity: fade * (urgent ? ATMOS_INK_URGENT : ATMOS_INK) } : undefined;
   return (
     <li
       className={cls}
-      style={{ transform: `translateY(${index * row}px)`, opacity: atmos ? undefined : fade, ['--plate' as string]: plate }}
+      style={{ transform: `translateY(${index * row}px)`, opacity: atmos ? undefined : fade }}
       title={chunk.files?.join('\n')}
     >
       <span className="tag" style={ink}>{TAG[chunk.kind]}</span>

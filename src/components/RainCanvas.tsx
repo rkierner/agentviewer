@@ -204,7 +204,7 @@ export function RainCanvas({ store, getLaneRects }: { store: MatrixStore; getLan
           const isHead = i === written - 1 && written < s.text.length;
           // Trail: characters further behind the head are dimmer.
           const behind = written - 1 - i;
-          const a = isHead ? 1 : Math.max(0.22, 0.85 - behind * 0.028) * fade;
+          const a = isHead ? 1 : Math.max(0.42, 1 - behind * 0.024) * fade;
           if (isHead) {
             ctx.fillStyle = `rgba(235,255,240,${a})`;
             ctx.shadowColor = `rgba(${s.rgb},0.9)`;
