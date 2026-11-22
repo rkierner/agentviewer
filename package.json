@@ -1,0 +1,45 @@
+{
+  "name": "agentviewer",
+  "version": "0.1.0",
+  "description": "Agent Matrix: a local-first live visualizer for Claude Code and Cursor agent sessions",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "collector": "tsx server/collector.ts",
+    "build": "vite build",
+    "start": "vite build && tsx server/collector.ts",
+    "typecheck": "tsc -p .",
+    "test": "tsx --test server/pipeline.test.ts",
+    "setup:claude": "node scripts/setup-hooks.mjs claude",
+    "setup:cursor": "node scripts/setup-hooks.mjs cursor",
+    "simulate": "node scripts/simulate-hooks.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rkierner/agentviewer.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rkierner/agentviewer/issues"
+  },
+  "homepage": "https://github.com/rkierner/agentviewer#readme",
+  "dependencies": {
+    "@fontsource/ibm-plex-sans-condensed": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.6"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  }
+}
